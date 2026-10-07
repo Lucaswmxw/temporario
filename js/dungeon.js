@@ -136,8 +136,16 @@ class Room {
       const enemyCount = 3 + Math.floor(Math.random() * 3);
 
       for (let i = 0; i < enemyCount; i++) {
-        const ex = 120 + Math.random() * (W - 240);
-        const ey = 120 + Math.random() * (H - 240);
+        let ex = 120 + Math.random() * (W - 240);
+        let ey = 120 + Math.random() * (H - 240);
+
+        // Pre-validate coordinates so enemies never spawn inside pillars or obstacles
+        let safeTries = 0;
+        while (safeTries < 25 && window.isPositionSafe && !window.isPositionSafe(this, ex, ey, 24)) {
+          ex = 120 + Math.random() * (W - 240);
+          ey = 120 + Math.random() * (H - 240);
+          safeTries++;
+        }
 
         if (this.sector.id === 1) {
           // Sector 1: Alien Infestation
@@ -222,7 +230,8 @@ class Dungeon {
       }
     }
 
-    console.error("TecnoBound: Falha ao gerar mapa válido após", maxAttempts, "tentativas.");
+    // Deterministic fallback guarantees a fully playable, 100% connected map with all required rooms
+    this.generateDeterministicFallback();
   }
 
   generate() {
@@ -418,6 +427,49 @@ class Dungeon {
 
   getRoom(gx, gy) {
     return this.rooms.get(`${gx},${gy}`) || null;
+  }
+
+  generateDeterministicFallback() {
+    this.rooms.clear();
+    const cx = Math.floor(this.gridSize / 2); // 3
+    const cy = Math.floor(this.gridSize / 2); // 3
+
+    // Cross-shaped guaranteed map layout
+    const layout = [
+      { gx: cx, gy: cy, type: 'START' },
+      { gx: cx, gy: cy - 1, type: 'COMBAT' },
+      { gx: cx, gy: cy - 2, type: 'BOSS' },
+      { gx: cx - 1, gy: cy, type: 'TREASURE' },
+      { gx: cx + 1, gy: cy, type: 'MUTAGEN' },
+      { gx: cx, gy: cy + 1, type: 'FABRICATOR' },
+      { gx: cx - 1, gy: cy - 1, type: 'COMBAT' },
+      { gx: cx + 1, gy: cy - 1, type: 'HAZARD' },
+      { gx: cx, gy: cy + 2, type: 'COMBAT' }
+    ];
+
+    layout.forEach(item => {
+      const room = new Room(item.gx, item.gy, item.type, this.sector);
+      const key = `${item.gx},${item.gy}`;
+      this.rooms.set(key, room);
+      if (item.type === 'START') this.startRoom = room;
+      else if (item.type === 'BOSS') this.bossRoom = room;
+      else if (item.type === 'TREASURE') this.treasureRoom = room;
+      else if (item.type === 'MUTAGEN') this.mutagenRoom = room;
+      else if (item.type === 'FABRICATOR') this.shopRoom = room;
+    });
+
+    // Link all adjacent doors
+    this.rooms.forEach(room => {
+      if (this.rooms.has(`${room.gx},${room.gy - 1}`)) room.doors.north = true;
+      if (this.rooms.has(`${room.gx},${room.gy + 1}`)) room.doors.south = true;
+      if (this.rooms.has(`${room.gx + 1},${room.gy}`)) room.doors.east = true;
+      if (this.rooms.has(`${room.gx - 1},${room.gy}`)) room.doors.west = true;
+    });
+
+    this.currentRoom = this.startRoom;
+    if (this.currentRoom) {
+      this.currentRoom.visited = true;
+    }
   }
 }
 

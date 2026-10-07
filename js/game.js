@@ -241,26 +241,36 @@ class InputSystem {
 
   initFocusHandlers() {
     window.addEventListener('blur', () => this.resetInputState());
+    window.addEventListener('focus', () => this.clearMomentaryInputs());
     document.addEventListener('visibilitychange', () => {
       if (document.hidden) this.resetInputState();
+      else this.clearMomentaryInputs();
     });
-    window.addEventListener('pointercancel', () => this.resetInputState());
+    window.addEventListener('pointercancel', () => this.clearMomentaryInputs());
+  }
+
+  clearMomentaryInputs() {
+    this.justPressed = {};
+    this.mouseDown = false;
+    this.rightMouseDown = false;
+    if (this.touchAim) {
+      this.touchAim.firing = false;
+      this.touchAim.active = false;
+      this.touchAim.pointerId = null;
+    }
+    if (this.joystick) {
+      this.joystick.active = false;
+      this.joystick.pointerId = null;
+      this.joystick.dx = 0;
+      this.joystick.dy = 0;
+    }
+    const knob = document.getElementById('joystickKnob');
+    if (knob) knob.style.transform = `translate(0px, 0px)`;
   }
 
   resetInputState() {
     this.keys = {};
-    this.justPressed = {};
-    this.mouseDown = false;
-    this.rightMouseDown = false;
-    this.touchAim.firing = false;
-    this.touchAim.active = false;
-    this.touchAim.pointerId = null;
-    this.joystick.active = false;
-    this.joystick.pointerId = null;
-    this.joystick.dx = 0;
-    this.joystick.dy = 0;
-    const knob = document.getElementById('joystickKnob');
-    if (knob) knob.style.transform = `translate(0px, 0px)`;
+    this.clearMomentaryInputs();
   }
 
   postUpdate() {
@@ -278,14 +288,16 @@ const PixelArt = {
   },
 
   drawFloor(ctx, room, W, H, T) {
+    const theme = room.sector.theme;
     ctx.fillStyle = room.sector.floorColor;
     ctx.fillRect(T, T, W - 2 * T, H - 2 * T);
 
-    // Floor tile grid lines
+    const step = CONSTANTS.TILE_SIZE;
+
+    // Floor tile grid lines with subtle contrast
     ctx.strokeStyle = room.sector.wallColor;
     ctx.lineWidth = 1;
-    ctx.globalAlpha = 0.35;
-    const step = CONSTANTS.TILE_SIZE;
+    ctx.globalAlpha = 0.28;
 
     for (let x = T; x < W - T; x += step) {
       ctx.beginPath();
@@ -301,20 +313,92 @@ const PixelArt = {
     }
     ctx.globalAlpha = 1.0;
 
-    // Room decorations
+    // Sector-specific detailed retro environmental floor plating
+    if (theme === 'organic') {
+      // Sector 1: Alien Biomass Creep, Spores and Organic Veins
+      ctx.fillStyle = '#163820';
+      for (let x = T + 20; x < W - T; x += 80) {
+        for (let y = T + 20; y < H - T; y += 80) {
+          ctx.fillRect(x + 2, y + 4, 12, 3);
+          ctx.fillRect(x + 4, y + 2, 8, 7);
+          ctx.fillStyle = '#22543d';
+          ctx.fillRect(x + 5, y + 4, 4, 3);
+          ctx.fillStyle = '#163820';
+        }
+      }
+    } else if (theme === 'robotic') {
+      // Sector 2: Industrial Steel Decking, Rivets and Circuit Conduits
+      ctx.fillStyle = '#0f2744';
+      ctx.strokeStyle = '#0284c7';
+      ctx.lineWidth = 1;
+      ctx.globalAlpha = 0.35;
+      for (let x = T + step; x < W - T; x += step * 2) {
+        ctx.beginPath();
+        ctx.moveTo(x, T);
+        ctx.lineTo(x, H - T);
+        ctx.stroke();
+        // Bolt rivets at tile corners
+        ctx.fillStyle = '#38bdf8';
+        for (let y = T + step; y < H - T; y += step * 2) {
+          ctx.fillRect(x - 1, y - 1, 2, 2);
+        }
+      }
+      ctx.globalAlpha = 1.0;
+    } else if (theme === 'vacuum') {
+      // Sector 3: Vacuum Hull Plating with Hull Fractures and Starfield Specks
+      ctx.fillStyle = '#e2e8f0';
+      ctx.globalAlpha = 0.45;
+      for (let i = 0; i < 18; i++) {
+        const sx = T + 30 + ((i * 137) % (W - 2 * T - 60));
+        const sy = T + 30 + ((i * 219) % (H - 2 * T - 60));
+        ctx.fillRect(sx, sy, 1.5, 1.5);
+      }
+      ctx.globalAlpha = 1.0;
+    } else if (theme === 'core') {
+      // Sector 4: Reactor Energy Grid & Thermal Conduits
+      ctx.strokeStyle = '#ff0055';
+      ctx.lineWidth = 1;
+      ctx.globalAlpha = 0.22;
+      ctx.beginPath();
+      ctx.arc(W / 2, H / 2, 140, 0, Math.PI * 2);
+      ctx.arc(W / 2, H / 2, 220, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.globalAlpha = 1.0;
+    }
+
+    // Dynamic Room Decorations
     if (room.decorations) {
       room.decorations.forEach(dec => {
-        if (room.sector.theme === 'organic') {
-          ctx.fillStyle = '#1b3f24';
+        if (theme === 'organic') {
+          // Alien bio-pustule or moss cluster
+          ctx.fillStyle = '#14532d';
           ctx.beginPath();
-          ctx.arc(dec.x, dec.y, dec.size * 0.4, 0, Math.PI * 2);
+          ctx.arc(dec.x, dec.y, dec.size * 0.45, 0, Math.PI * 2);
           ctx.fill();
-        } else if (room.sector.theme === 'robotic') {
-          ctx.fillStyle = '#12263d';
+          ctx.fillStyle = '#39ff14';
+          ctx.fillRect(dec.x - 2, dec.y - 2, 4, 4);
+        } else if (theme === 'robotic') {
+          // Floor ventilation grill or data junction
+          ctx.fillStyle = '#0b192c';
           ctx.fillRect(dec.x, dec.y, dec.size, dec.size * 0.6);
+          ctx.strokeStyle = '#1e3a5f';
+          ctx.lineWidth = 1;
+          ctx.strokeRect(dec.x, dec.y, dec.size, dec.size * 0.6);
+          ctx.fillStyle = '#00f0ff';
+          ctx.fillRect(dec.x + 3, dec.y + 3, 3, 3);
+        } else if (theme === 'vacuum') {
+          // Reinforced hull patch
+          ctx.fillStyle = '#17122b';
+          ctx.fillRect(dec.x, dec.y, dec.size * 0.7, dec.size * 0.7);
+          ctx.strokeStyle = '#bf55ec';
+          ctx.lineWidth = 1;
+          ctx.strokeRect(dec.x, dec.y, dec.size * 0.7, dec.size * 0.7);
         } else {
-          ctx.fillStyle = '#1c1533';
-          ctx.fillRect(dec.x, dec.y, dec.size * 0.5, dec.size * 0.5);
+          // Core energy vent
+          ctx.fillStyle = '#2a0e1c';
+          ctx.fillRect(dec.x, dec.y, dec.size * 0.6, dec.size * 0.6);
+          ctx.fillStyle = '#ff2a5f';
+          ctx.fillRect(dec.x + 2, dec.y + 2, 3, 3);
         }
       });
     }
@@ -323,30 +407,53 @@ const PixelArt = {
   drawWalls(ctx, room, W, H, T) {
     const mainCol = room.sector.wallColor;
     const bevelCol = room.sector.wallBevel;
+    const accentCol = room.sector.accentColor || '#00f0ff';
 
     // North Wall
     ctx.fillStyle = mainCol;
     ctx.fillRect(0, 0, W, T);
     ctx.fillStyle = bevelCol;
-    ctx.fillRect(0, T - 4, W, 4);
+    ctx.fillRect(0, T - 5, W, 5);
+    // Bevel highlights
+    ctx.fillStyle = '#000000';
+    ctx.fillRect(0, 0, W, 3);
 
     // South Wall
     ctx.fillStyle = mainCol;
     ctx.fillRect(0, H - T, W, T);
     ctx.fillStyle = bevelCol;
-    ctx.fillRect(0, H - T, W, 4);
+    ctx.fillRect(0, H - T, W, 5);
+    ctx.fillStyle = '#000000';
+    ctx.fillRect(0, H - 3, W, 3);
 
     // West Wall
     ctx.fillStyle = mainCol;
     ctx.fillRect(0, 0, T, H);
     ctx.fillStyle = bevelCol;
-    ctx.fillRect(T - 4, 0, 4, H);
+    ctx.fillRect(T - 5, 0, 5, H);
+    ctx.fillStyle = '#000000';
+    ctx.fillRect(0, 0, 3, H);
 
     // East Wall
     ctx.fillStyle = mainCol;
     ctx.fillRect(W - T, 0, T, H);
     ctx.fillStyle = bevelCol;
-    ctx.fillRect(W - T, 0, 4, H);
+    ctx.fillRect(W - T, 0, 5, H);
+    ctx.fillStyle = '#000000';
+    ctx.fillRect(W - 3, 0, 3, H);
+
+    // Sci-Fi Wall Seams and Conduit Accents
+    ctx.fillStyle = accentCol;
+    ctx.globalAlpha = 0.55;
+    for (let x = 120; x < W - 120; x += 160) {
+      ctx.fillRect(x, T - 8, 12, 3);
+      ctx.fillRect(x, H - T + 5, 12, 3);
+    }
+    for (let y = 120; y < H - 120; y += 140) {
+      ctx.fillRect(T - 8, y, 3, 12);
+      ctx.fillRect(W - T + 5, y, 3, 12);
+    }
+    ctx.globalAlpha = 1.0;
   },
 
   drawDoor(ctx, x, y, dir, open, locked, theme) {
@@ -362,72 +469,209 @@ const PixelArt = {
       dh = D;
     }
 
+    // Door Frame Bulkhead
+    ctx.fillStyle = '#060b13';
+    ctx.fillRect(-dw / 2, -dh / 2, dw, dh);
+    ctx.strokeStyle = '#1e3a5f';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(-dw / 2, -dh / 2, dw, dh);
+
     if (locked) {
+      // Locked Blast Door: Crimson laser grid and hazard chevrons
+      ctx.fillStyle = '#55081c';
+      ctx.fillRect(-dw / 2 + 4, -dh / 2 + 4, dw - 8, dh - 8);
+      ctx.strokeStyle = '#ff0055';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(-dw / 2 + 4, -dh / 2 + 4, dw - 8, dh - 8);
+
+      // Warning hazard stripes
+      ctx.fillStyle = '#ffaa00';
+      if (dw > dh) {
+        for (let i = -dw / 2 + 10; i < dw / 2 - 10; i += 14) {
+          ctx.fillRect(i, -dh / 2 + 6, 6, dh - 12);
+        }
+      } else {
+        for (let i = -dh / 2 + 10; i < dh / 2 - 10; i += 14) {
+          ctx.fillRect(-dw / 2 + 6, i, dw - 12, 6);
+        }
+      }
+
+      // Center lock core
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(-4, -4, 8, 8);
       ctx.fillStyle = '#ff0055';
-      ctx.fillRect(-dw / 2, -dh / 2, dw, dh);
-      ctx.strokeStyle = '#ffffff';
+      ctx.fillRect(-2, -2, 4, 4);
+    } else if (open) {
+      // Open / Cleared Doorway: Deep access tunnel with glowing cyan energy field
+      ctx.fillStyle = '#020509';
+      ctx.fillRect(-dw / 2 + 2, -dh / 2 + 2, dw - 4, dh - 4);
+      ctx.strokeStyle = '#00f0ff';
       ctx.lineWidth = 2;
       ctx.strokeRect(-dw / 2 + 2, -dh / 2 + 2, dw - 4, dh - 4);
-    } else if (open) {
-      ctx.fillStyle = '#050a12';
-      ctx.fillRect(-dw / 2, -dh / 2, dw, dh);
-      ctx.strokeStyle = '#00f0ff';
-      ctx.lineWidth = 1.5;
-      ctx.strokeRect(-dw / 2, -dh / 2, dw, dh);
+
+      // Entry chevrons
+      ctx.fillStyle = '#38bdf8';
+      if (dir === 'north') {
+        ctx.fillRect(-8, -2, 16, 2);
+        ctx.fillRect(-4, -5, 8, 2);
+      } else if (dir === 'south') {
+        ctx.fillRect(-8, 0, 16, 2);
+        ctx.fillRect(-4, 3, 8, 2);
+      } else if (dir === 'west') {
+        ctx.fillRect(-2, -8, 2, 16);
+        ctx.fillRect(-5, -4, 2, 8);
+      } else {
+        ctx.fillRect(0, -8, 2, 16);
+        ctx.fillRect(3, -4, 2, 8);
+      }
     }
     ctx.restore();
   },
 
   drawObstacle(ctx, obs, theme) {
     if (obs.type === 'pillar') {
-      ctx.fillStyle = '#0a1626';
+      // Reinforced Structural Octagonal Column
+      ctx.fillStyle = '#081320';
       ctx.fillRect(obs.x, obs.y, obs.w, obs.h);
-      ctx.strokeStyle = '#1e3a5f';
+
+      // Chamfered sci-fi corners
+      ctx.fillStyle = '#0f2744';
+      ctx.fillRect(obs.x + 3, obs.y + 3, obs.w - 6, obs.h - 6);
+
+      // Outer metallic bevel border
+      ctx.strokeStyle = '#1e40af';
       ctx.lineWidth = 2;
       ctx.strokeRect(obs.x, obs.y, obs.w, obs.h);
+
+      // Hazard chevrons on top/bottom
+      ctx.fillStyle = '#f59e0b';
+      ctx.fillRect(obs.x + 4, obs.y + 2, 6, 3);
+      ctx.fillRect(obs.x + obs.w - 10, obs.y + 2, 6, 3);
+      ctx.fillRect(obs.x + 4, obs.y + obs.h - 5, 6, 3);
+      ctx.fillRect(obs.x + obs.w - 10, obs.y + obs.h - 5, 6, 3);
+
+      // Central glowing power conduit
       ctx.fillStyle = '#00f0ff';
-      ctx.fillRect(obs.x + obs.w / 2 - 2, obs.y + obs.h / 2 - 2, 4, 4);
+      ctx.fillRect(obs.x + obs.w / 2 - 3, obs.y + 8, 6, obs.h - 16);
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(obs.x + obs.w / 2 - 1, obs.y + 10, 2, obs.h - 20);
     } else if (obs.type === 'terminal') {
-      ctx.fillStyle = '#0c2238';
+      // Retro Diagnostic Workstation Terminal
+      ctx.fillStyle = '#0b1626';
       ctx.fillRect(obs.x, obs.y, obs.w, obs.h);
       ctx.strokeStyle = '#00f0ff';
       ctx.lineWidth = 2;
       ctx.strokeRect(obs.x, obs.y, obs.w, obs.h);
+
+      // CRT Display Screen
+      ctx.fillStyle = '#021814';
+      ctx.fillRect(obs.x + 8, obs.y + 6, obs.w - 16, obs.h - 20);
+      ctx.strokeStyle = '#10b981';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(obs.x + 8, obs.y + 6, obs.w - 16, obs.h - 20);
+
+      // Scrolling green code lines
       ctx.fillStyle = '#39ff14';
-      ctx.fillRect(obs.x + 8, obs.y + 8, obs.w - 16, 12);
+      ctx.fillRect(obs.x + 12, obs.y + 10, obs.w - 24, 2);
+      ctx.fillRect(obs.x + 12, obs.y + 14, obs.w - 32, 2);
+      ctx.fillRect(obs.x + 12, obs.y + 18, obs.w - 20, 2);
+
+      // Keyboard Tray & Status LEDs
+      ctx.fillStyle = '#1e293b';
+      ctx.fillRect(obs.x + 8, obs.y + obs.h - 11, obs.w - 16, 6);
+      ctx.fillStyle = '#00f0ff';
+      ctx.fillRect(obs.x + 10, obs.y + obs.h - 9, 3, 3);
+      ctx.fillStyle = '#ffaa00';
+      ctx.fillRect(obs.x + 16, obs.y + obs.h - 9, 3, 3);
     } else if (obs.type === 'pedestal') {
-      ctx.fillStyle = '#172538';
+      // High-Tech Module Pedestal
+      ctx.fillStyle = '#0f172a';
       ctx.fillRect(obs.x, obs.y, obs.w, obs.h);
-      ctx.strokeStyle = obs.claimed ? '#475569' : '#00f0ff';
+      ctx.strokeStyle = obs.claimed ? '#334155' : '#00f0ff';
       ctx.lineWidth = 2;
       ctx.strokeRect(obs.x, obs.y, obs.w, obs.h);
+
+      // Inner platform bevel
+      ctx.fillStyle = '#1e293b';
+      ctx.fillRect(obs.x + 4, obs.y + 4, obs.w - 8, obs.h - 8);
+
       if (!obs.claimed) {
+        // Floating Holographic Module Cell
         ctx.fillStyle = '#00f0ff';
-        ctx.fillRect(obs.x + obs.w / 2 - 8, obs.y + obs.h / 2 - 8, 16, 16);
+        ctx.beginPath();
+        ctx.arc(obs.x + obs.w / 2, obs.y + obs.h / 2, 12, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(obs.x + obs.w / 2 - 4, obs.y + obs.h / 2 - 4, 8, 8);
+        ctx.strokeStyle = '#38bdf8';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.arc(obs.x + obs.w / 2, obs.y + obs.h / 2, 16, 0, Math.PI * 2);
+        ctx.stroke();
+      } else {
+        ctx.fillStyle = '#475569';
+        ctx.fillRect(obs.x + obs.w / 2 - 6, obs.y + obs.h / 2 - 6, 12, 12);
       }
     } else if (obs.type === 'mutagen_pod') {
-      ctx.fillStyle = '#0d2818';
+      // Alien Mutagen Stasis Pod Cylinder
+      ctx.fillStyle = '#051b11';
       ctx.fillRect(obs.x, obs.y, obs.w, obs.h);
-      ctx.strokeStyle = obs.claimed ? '#475569' : '#39ff14';
+      ctx.strokeStyle = obs.claimed ? '#334155' : '#22c55e';
       ctx.lineWidth = 2;
       ctx.strokeRect(obs.x, obs.y, obs.w, obs.h);
+
+      // Stasis tube glass
+      ctx.fillStyle = '#0b2e1e';
+      ctx.fillRect(obs.x + 6, obs.y + 6, obs.w - 12, obs.h - 12);
+
       if (!obs.claimed) {
+        // Glowing alien bio-organism floating inside
         ctx.fillStyle = '#39ff14';
         ctx.beginPath();
         ctx.arc(obs.x + obs.w / 2, obs.y + obs.h / 2, 14, 0, Math.PI * 2);
         ctx.fill();
+        // Symbiont core & bubbles
+        ctx.fillStyle = '#86efac';
+        ctx.fillRect(obs.x + obs.w / 2 - 4, obs.y + obs.h / 2 - 6, 8, 12);
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(obs.x + obs.w / 2 + 5, obs.y + obs.h / 2 - 8, 2, 2);
+        ctx.fillRect(obs.x + obs.w / 2 - 7, obs.y + obs.h / 2 + 4, 2, 2);
+      } else {
+        ctx.fillStyle = '#1e3a2b';
+        ctx.fillRect(obs.x + 8, obs.y + 8, obs.w - 16, obs.h - 16);
       }
     } else if (obs.type.startsWith('shop_')) {
-      ctx.fillStyle = '#132135';
+      // Automated Cyber Fabricator / Vending Terminal
+      ctx.fillStyle = '#0b1626';
       ctx.fillRect(obs.x, obs.y, obs.w, obs.h);
       ctx.strokeStyle = obs.bought ? '#334155' : '#f59e0b';
       ctx.lineWidth = 2;
       ctx.strokeRect(obs.x, obs.y, obs.w, obs.h);
+
+      // Display window
+      ctx.fillStyle = '#060d17';
+      ctx.fillRect(obs.x + 4, obs.y + 4, obs.w - 8, obs.h - 18);
+
       ctx.fillStyle = obs.bought ? '#475569' : '#f59e0b';
       ctx.font = 'bold 9px monospace';
       ctx.textAlign = 'center';
       const label = obs.type === 'shop_heal' ? 'NANITES' : (obs.type === 'shop_o2' ? 'O2 TANK' : 'MODULO');
-      ctx.fillText(obs.bought ? 'ESGOTADO' : `${label} [${obs.cost || 25}]`, obs.x + obs.w / 2, obs.y + obs.h / 2 + 3);
+      ctx.fillText(obs.bought ? 'ESGOTADO' : `${label} [${obs.cost || 25}]`, obs.x + obs.w / 2, obs.y + obs.h - 5);
+
+      if (!obs.bought) {
+        // Item icon indicator
+        if (obs.type === 'shop_heal') {
+          ctx.fillStyle = '#ff0055';
+          ctx.fillRect(obs.x + obs.w / 2 - 6, obs.y + 10, 12, 4);
+          ctx.fillRect(obs.x + obs.w / 2 - 2, obs.y + 6, 4, 12);
+        } else if (obs.type === 'shop_o2') {
+          ctx.fillStyle = '#38bdf8';
+          ctx.fillRect(obs.x + obs.w / 2 - 4, obs.y + 7, 8, 12);
+        } else {
+          ctx.fillStyle = '#00f0ff';
+          ctx.fillRect(obs.x + obs.w / 2 - 5, obs.y + 7, 10, 10);
+        }
+      }
     }
   },
 
@@ -435,7 +679,7 @@ const PixelArt = {
     ctx.save();
     ctx.translate(Math.round(e.x), Math.round(e.y));
 
-    // Flash white on damage
+    // Flash pure white on damage
     if (e.flashTimer > 0) {
       ctx.fillStyle = '#ffffff';
       ctx.beginPath();
@@ -454,124 +698,389 @@ const PixelArt = {
       ctx.stroke();
     }
 
-    // Sector 1: Aliens
+    // Facing angle towards target or movement
+    const faceAngle = (e.vx !== 0 || e.vy !== 0) ? Math.atan2(e.vy, e.vx) : (e.target ? Math.atan2(e.target.y - e.y, e.target.x - e.x) : 0);
+    ctx.rotate(faceAngle);
+
+    // ==========================================
+    // SECTOR 1: ALIEN INFESTATION
+    // ==========================================
     if (e instanceof BioSwarmer) {
-      ctx.fillStyle = '#39ff14';
+      // Bio-Swarmer: Alien Skitterer with segmented spiny abdomen, mandibles, compound eyes
+      // Carapace Body
+      ctx.fillStyle = '#166534';
       ctx.beginPath();
-      ctx.arc(0, 0, e.radius, 0, Math.PI * 2);
+      ctx.ellipse(0, 0, e.radius, e.radius * 0.75, 0, 0, Math.PI * 2);
       ctx.fill();
-      ctx.fillStyle = '#111';
-      ctx.fillRect(-3, -2, 2, 2);
-      ctx.fillRect(2, -2, 2, 2);
-    } else if (e instanceof BioSpitter) {
+      ctx.strokeStyle = '#14532d';
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+
+      // Segmented Chitin Ridges
       ctx.fillStyle = '#22c55e';
-      ctx.fillRect(-e.radius, -e.radius, e.radius * 2, e.radius * 2);
+      ctx.fillRect(-6, -4, 4, 8);
+      ctx.fillRect(0, -5, 4, 10);
+
+      // Sharp Pincer Mandibles
       ctx.fillStyle = '#ff0055';
-      ctx.fillRect(-3, -3, 6, 6);
-    } else if (e instanceof BioBrood) {
-      ctx.fillStyle = '#15803d';
+      ctx.fillRect(e.radius - 2, -5, 5, 2);
+      ctx.fillRect(e.radius - 2, 3, 5, 2);
+
+      // Glowing Compound Alien Eyes
+      ctx.fillStyle = '#39ff14';
+      ctx.fillRect(4, -3, 3, 2);
+      ctx.fillRect(4, 1, 3, 2);
+      ctx.fillStyle = '#ff0055';
+      ctx.fillRect(6, -2, 2, 4);
+
+      // Animated Twitching Skitter Legs
+      ctx.strokeStyle = '#166534';
+      ctx.lineWidth = 2;
+      [-4, 2].forEach(lx => {
+        ctx.beginPath();
+        ctx.moveTo(lx, -e.radius * 0.7);
+        ctx.lineTo(lx - 4, -e.radius * 1.3);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(lx, e.radius * 0.7);
+        ctx.lineTo(lx - 4, e.radius * 1.3);
+        ctx.stroke();
+      });
+    } else if (e instanceof BioSpitter) {
+      // Bio-Spitter: Heavy Acidic Artillery Beast
+      // Heavy Chitinous Crest Body
+      ctx.fillStyle = '#14532d';
+      ctx.fillRect(-e.radius, -e.radius * 0.8, e.radius * 1.8, e.radius * 1.6);
+      ctx.strokeStyle = '#166534';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(-e.radius, -e.radius * 0.8, e.radius * 1.8, e.radius * 1.6);
+
+      // Translucent Pulsating Spore Acid Sac on dorsal
+      ctx.fillStyle = '#22c55e';
       ctx.beginPath();
-      ctx.arc(0, 0, e.radius, 0, Math.PI * 2);
+      ctx.arc(-4, 0, e.radius * 0.7, 0, Math.PI * 2);
       ctx.fill();
       ctx.fillStyle = '#86efac';
-      ctx.fillRect(-6, -6, 12, 12);
+      ctx.fillRect(-6, -3, 5, 6);
+
+      // Gaping Acidic Maw
+      ctx.fillStyle = '#052e16';
+      ctx.fillRect(e.radius - 6, -4, 8, 8);
+      ctx.fillStyle = '#39ff14';
+      ctx.fillRect(e.radius - 3, -2, 5, 4);
+
+      // Armored Head Plate
+      ctx.fillStyle = '#15803d';
+      ctx.fillRect(2, -7, 6, 14);
+    } else if (e instanceof BioBrood) {
+      // Bio-Brood: Colossal Hive Matriarch Carrier
+      ctx.fillStyle = '#14532d';
+      ctx.beginPath();
+      ctx.ellipse(0, 0, e.radius, e.radius * 0.85, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = '#22c55e';
+      ctx.lineWidth = 2.5;
+      ctx.stroke();
+
+      // Pulsing Larval Egg Sac Chambers
+      ctx.fillStyle = '#39ff14';
+      [-8, 0, 8].forEach(ex => {
+        ctx.beginPath();
+        ctx.arc(ex - 4, -6, 4, 0, Math.PI * 2);
+        ctx.arc(ex - 4, 6, 4, 0, Math.PI * 2);
+        ctx.fill();
+      });
+
+      // Heavily Armored Head Horns
+      ctx.fillStyle = '#166534';
+      ctx.fillRect(e.radius - 6, -10, 8, 4);
+      ctx.fillRect(e.radius - 6, 6, 8, 4);
+
+      // Predatory Compound Eyes
+      ctx.fillStyle = '#ff0055';
+      ctx.fillRect(e.radius - 2, -4, 4, 3);
+      ctx.fillRect(e.radius - 2, 1, 4, 3);
     }
-    // Sector 2: Robots
+    // ==========================================
+    // SECTOR 2: AUTOMATON COMPLEX
+    // ==========================================
     else if (e instanceof RoboDrone) {
-      ctx.fillStyle = e.isHacked ? '#00f0ff' : '#ff2a5f';
-      ctx.fillRect(-e.radius, -e.radius, e.radius * 2, e.radius * 2);
-      ctx.fillStyle = '#0f172a';
-      ctx.fillRect(-4, -4, 8, 8);
+      // Robo-Drone: Aerial Combat Drone
+      const bodyCol = e.isHacked ? '#0284c7' : '#0f172a';
+      const glowCol = e.isHacked ? '#00f0ff' : '#ff2a5f';
+
+      // Faceted Angular Chassis
+      ctx.fillStyle = bodyCol;
+      ctx.fillRect(-e.radius * 0.9, -e.radius * 0.8, e.radius * 1.8, e.radius * 1.6);
+      ctx.strokeStyle = glowCol;
+      ctx.lineWidth = 2;
+      ctx.strokeRect(-e.radius * 0.9, -e.radius * 0.8, e.radius * 1.8, e.radius * 1.6);
+
+      // Dual Lateral Thrusters
+      ctx.fillStyle = '#334155';
+      ctx.fillRect(-e.radius - 2, -e.radius * 0.9, 6, 5);
+      ctx.fillRect(-e.radius - 2, e.radius * 0.9 - 5, 6, 5);
+
+      // Jet Thruster Exhaust Flames
+      ctx.fillStyle = glowCol;
+      ctx.fillRect(-e.radius - 7, -e.radius * 0.9 + 1, 5, 3);
+      ctx.fillRect(-e.radius - 7, e.radius * 0.9 - 4, 5, 3);
+
+      // Cyclops Optical Sensor
+      ctx.fillStyle = glowCol;
+      ctx.fillRect(e.radius - 6, -3, 6, 6);
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(e.radius - 4, -1, 3, 2);
     } else if (e instanceof RoboSentry) {
-      ctx.fillStyle = '#0284c7';
-      ctx.fillRect(-e.radius, -e.radius, e.radius * 2, e.radius * 2);
-      ctx.strokeStyle = e.isHacked ? '#00f0ff' : '#ff0055';
-      ctx.lineWidth = 3;
-      ctx.strokeRect(-e.radius, -e.radius, e.radius * 2, e.radius * 2);
+      // Robo-Sentry: Heavy Stationary Tactical Turret
+      const glowCol = e.isHacked ? '#00f0ff' : '#ff0055';
+
+      // Quad Tripod Base
+      ctx.strokeStyle = '#1e293b';
+      ctx.lineWidth = 4;
+      [-12, 12].forEach(yPos => {
+        ctx.beginPath();
+        ctx.moveTo(0, 0);
+        ctx.lineTo(-e.radius - 2, yPos);
+        ctx.moveTo(0, 0);
+        ctx.lineTo(e.radius + 2, yPos);
+        ctx.stroke();
+      });
+
+      // Turret Housing with Hazard Stripes
+      ctx.fillStyle = '#0f172a';
+      ctx.beginPath();
+      ctx.arc(0, 0, e.radius * 0.85, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = glowCol;
+      ctx.lineWidth = 2.5;
+      ctx.stroke();
+
+      // Dual Gatling Heavy Barrels
+      ctx.fillStyle = '#64748b';
+      ctx.fillRect(4, -5, 14, 3);
+      ctx.fillRect(4, 2, 14, 3);
+
+      // Center Laser Targeting Reticle
+      ctx.fillStyle = glowCol;
+      ctx.fillRect(-3, -3, 6, 6);
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(-1, -1, 2, 2);
     } else if (e instanceof RoboRoller) {
+      // Robo-Roller: Heavy Armored Treaded Juggernaut
       ctx.fillStyle = '#0369a1';
       ctx.beginPath();
       ctx.arc(0, 0, e.radius, 0, Math.PI * 2);
       ctx.fill();
-      ctx.strokeStyle = '#ffffff';
-      ctx.lineWidth = 2;
+      ctx.strokeStyle = '#38bdf8';
+      ctx.lineWidth = 2.5;
       ctx.stroke();
+
+      // Rotating Tread Chevrons
+      ctx.strokeStyle = '#082f49';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.arc(0, 0, e.radius * 0.65, 0, Math.PI * 2);
+      ctx.stroke();
+
+      // Charging Laser Eye
+      const eyeCol = e.isCharging ? '#ff0055' : '#00f0ff';
+      ctx.fillStyle = eyeCol;
+      ctx.fillRect(e.radius - 6, -4, 6, 8);
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(e.radius - 3, -2, 3, 4);
     }
-    // Sector 3: Void
+    // ==========================================
+    // SECTOR 3: VOID PHANTOM
+    // ==========================================
     else if (e instanceof VoidPhantom) {
-      ctx.fillStyle = '#bf55ec';
-      ctx.beginPath();
-      ctx.arc(0, 0, e.radius, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.fillStyle = '#4a044e';
-      ctx.fillRect(-4, -4, 8, 8);
-    }
-    // Bosses
-    else if (e instanceof BossGorgon) {
-      ctx.fillStyle = '#166534';
-      ctx.beginPath();
-      ctx.arc(0, 0, e.radius, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.strokeStyle = '#39ff14';
-      ctx.lineWidth = 4;
-      ctx.stroke();
-      ctx.fillStyle = '#ff0055';
-      ctx.fillRect(-8, -8, 16, 16);
-    } else if (e instanceof BossTitan) {
-      ctx.fillStyle = '#0f2744';
-      ctx.fillRect(-e.radius, -e.radius, e.radius * 2, e.radius * 2);
-      ctx.strokeStyle = '#00f0ff';
-      ctx.lineWidth = 4;
-      ctx.strokeRect(-e.radius, -e.radius, e.radius * 2, e.radius * 2);
-      ctx.fillStyle = '#ff2a5f';
-      ctx.fillRect(-12, -4, 24, 8);
-    } else if (e instanceof BossEntropia) {
-      ctx.fillStyle = '#581c87';
+      // Void-Phantom: Shadowy Ethereal Cosmic Entity
+      ctx.fillStyle = '#3b0764';
       ctx.beginPath();
       ctx.arc(0, 0, e.radius, 0, Math.PI * 2);
       ctx.fill();
       ctx.strokeStyle = '#bf55ec';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+
+      // Floating Faceless Cosmic Void Mask
+      ctx.fillStyle = '#1e082c';
+      ctx.fillRect(-4, -6, 12, 12);
+      ctx.fillStyle = '#e879f9';
+      ctx.fillRect(2, -4, 3, 3);
+      ctx.fillRect(2, 1, 3, 3);
+
+      // Swirling Dark Matter Tendrils
+      ctx.strokeStyle = '#7e22ce';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(-e.radius * 0.6, 0, e.radius * 0.5, 0, Math.PI);
+      ctx.stroke();
+    }
+    // ==========================================
+    // BOSSES
+    // ==========================================
+    else if (e instanceof BossGorgon) {
+      // Sector 1 Boss: Gorgon - Patriarch of the Alien Hive
+      ctx.fillStyle = '#14532d';
+      ctx.beginPath();
+      ctx.ellipse(0, 0, e.radius, e.radius * 0.8, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = '#39ff14';
+      ctx.lineWidth = 4;
+      ctx.stroke();
+
+      // Huge Spiked Curved Horns
+      ctx.fillStyle = '#166534';
+      ctx.beginPath();
+      ctx.moveTo(e.radius * 0.5, -e.radius * 0.8);
+      ctx.lineTo(e.radius * 1.1, -e.radius * 1.3);
+      ctx.lineTo(e.radius * 0.2, -e.radius * 0.5);
+      ctx.fill();
+
+      ctx.beginPath();
+      ctx.moveTo(e.radius * 0.5, e.radius * 0.8);
+      ctx.lineTo(e.radius * 1.1, e.radius * 1.3);
+      ctx.lineTo(e.radius * 0.2, e.radius * 0.5);
+      ctx.fill();
+
+      // Fanged Maw with Dripping Venom
+      ctx.fillStyle = '#052e16';
+      ctx.fillRect(e.radius - 12, -10, 14, 20);
+      ctx.fillStyle = '#ff0055';
+      ctx.fillRect(e.radius - 4, -8, 6, 4);
+      ctx.fillRect(e.radius - 4, 4, 6, 4);
+
+      // Multiple Glowing Ruby Eyes
+      ctx.fillStyle = '#39ff14';
+      [-6, 0, 6].forEach(ey => {
+        ctx.fillRect(e.radius - 14, ey - 2, 4, 4);
+      });
+    } else if (e instanceof BossTitan) {
+      // Sector 2 Boss: Titan Autômato MK-IV
+      ctx.fillStyle = '#0f172a';
+      ctx.fillRect(-e.radius, -e.radius * 0.85, e.radius * 2, e.radius * 1.7);
+      ctx.strokeStyle = '#00f0ff';
+      ctx.lineWidth = 4;
+      ctx.strokeRect(-e.radius, -e.radius * 0.85, e.radius * 2, e.radius * 1.7);
+
+      // Dual Missile Pods on Shoulders
+      ctx.fillStyle = '#1e293b';
+      ctx.fillRect(-e.radius * 0.7, -e.radius * 1.2, 18, 10);
+      ctx.fillRect(-e.radius * 0.7, e.radius * 0.9, 18, 10);
+      ctx.fillStyle = '#ff2a5f';
+      ctx.fillRect(-e.radius * 0.7 + 3, -e.radius * 1.2 + 2, 4, 4);
+      ctx.fillRect(-e.radius * 0.7 + 3, e.radius * 0.9 + 2, 4, 4);
+
+      // Heavy Frontal Railguns
+      ctx.fillStyle = '#64748b';
+      ctx.fillRect(e.radius - 4, -14, 18, 6);
+      ctx.fillRect(e.radius - 4, 8, 18, 6);
+
+      // Pulsing Reactor Core
+      ctx.fillStyle = '#ff2a5f';
+      ctx.beginPath();
+      ctx.arc(0, 0, 14, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(-4, -4, 8, 8);
+    } else if (e instanceof BossEntropia) {
+      // Sector 3 Boss: Entropia - Void Singularity
+      ctx.fillStyle = '#05020a';
+      ctx.beginPath();
+      ctx.arc(0, 0, e.radius * 0.8, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = '#bf55ec';
       ctx.lineWidth = 5;
       ctx.stroke();
+
+      // Glowing Accretion Disks
+      ctx.strokeStyle = '#e879f9';
+      ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      ctx.ellipse(0, 0, e.radius * 1.25, e.radius * 0.55, 0, 0, Math.PI * 2);
+      ctx.stroke();
+
+      // Cosmic Event Horizon Glow
+      ctx.fillStyle = '#e879f9';
+      ctx.fillRect(-6, -6, 12, 12);
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(-2, -2, 4, 4);
     } else if (e instanceof BossArchon) {
+      // Sector 4 Final Boss: Archon - Sovereign of the Core
       ctx.fillStyle = '#4c0519';
       ctx.beginPath();
-      ctx.arc(0, 0, e.radius, 0, Math.PI * 2);
+      ctx.arc(0, 0, e.radius * 0.85, 0, Math.PI * 2);
       ctx.fill();
       ctx.strokeStyle = '#ff0055';
       ctx.lineWidth = 5;
       ctx.stroke();
+
+      // Radiant Cyber Wings
+      ctx.fillStyle = '#ff2a5f';
+      ctx.beginPath();
+      ctx.moveTo(-e.radius * 0.5, -e.radius * 1.4);
+      ctx.lineTo(e.radius * 0.8, -e.radius * 0.6);
+      ctx.lineTo(-e.radius * 0.2, 0);
+      ctx.fill();
+
+      ctx.beginPath();
+      ctx.moveTo(-e.radius * 0.5, e.radius * 1.4);
+      ctx.lineTo(e.radius * 0.8, e.radius * 0.6);
+      ctx.lineTo(-e.radius * 0.2, 0);
+      ctx.fill();
+
+      // Divine Cyber Halo / Crest
+      ctx.strokeStyle = '#00f0ff';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.arc(-14, 0, e.radius * 0.9, -Math.PI / 2, Math.PI / 2);
+      ctx.stroke();
+
+      // Supercharged Core
       ctx.fillStyle = '#00f0ff';
-      ctx.fillRect(-10, -10, 20, 20);
+      ctx.beginPath();
+      ctx.arc(0, 0, 16, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(-5, -5, 10, 10);
     } else {
-      ctx.fillStyle = e.color;
+      ctx.fillStyle = e.color || '#ff0055';
       ctx.beginPath();
       ctx.arc(0, 0, e.radius, 0, Math.PI * 2);
       ctx.fill();
     }
 
-    // Boss Health Bar on top
+    ctx.restore();
+
+    // Boss Top Health Bar
     if (e.isBoss) {
-      const bw = 120;
-      const bh = 8;
+      ctx.save();
+      ctx.translate(Math.round(e.x), Math.round(e.y));
+      const bw = 150;
+      const bh = 10;
       ctx.fillStyle = '#09111c';
-      ctx.fillRect(-bw / 2, -e.radius - 20, bw, bh);
+      ctx.fillRect(-bw / 2, -e.radius - 26, bw, bh);
       ctx.fillStyle = '#ff0055';
       const pct = Math.max(0, e.hp / e.maxHp);
-      ctx.fillRect(-bw / 2, -e.radius - 20, bw * pct, bh);
+      ctx.fillRect(-bw / 2, -e.radius - 26, bw * pct, bh);
       ctx.strokeStyle = '#ffffff';
-      ctx.lineWidth = 1;
-      ctx.strokeRect(-bw / 2, -e.radius - 20, bw, bh);
-    }
+      ctx.lineWidth = 1.5;
+      ctx.strokeRect(-bw / 2, -e.radius - 26, bw, bh);
 
-    ctx.restore();
+      ctx.fillStyle = '#ffffff';
+      ctx.font = 'bold 8px monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText(e.bossName || 'CHEFE', 0, -e.radius - 29);
+      ctx.restore();
+    }
   },
 
   drawPlayer(ctx, player) {
     ctx.save();
     ctx.translate(Math.round(player.x), Math.round(player.y));
 
-    // Flash on damage
+    // Flash white on damage
     if (player.flashTimer > 0) {
       ctx.fillStyle = '#ffffff';
       ctx.beginPath();
@@ -581,53 +1090,146 @@ const PixelArt = {
       return;
     }
 
-    // Dash trail / i-frame aura
+    // Dash trail / i-frame cyber aura
     if (player.isDashing || player.invulnTimer > 0) {
       ctx.strokeStyle = '#00f0ff';
-      ctx.lineWidth = 2;
+      ctx.lineWidth = 2.5;
       ctx.beginPath();
-      ctx.arc(0, 0, player.radius + 4, 0, Math.PI * 2);
+      ctx.arc(0, 0, player.radius + 5, 0, Math.PI * 2);
       ctx.stroke();
-    }
 
-    // Player Exo-suit Body
-    ctx.fillStyle = '#0f172a';
-    ctx.beginPath();
-    ctx.arc(0, 0, player.radius, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.strokeStyle = '#00f0ff';
-    ctx.lineWidth = 2;
-    ctx.stroke();
-
-    // Direction Visor
-    const vx = Math.cos(player.angle) * 7;
-    const vy = Math.sin(player.angle) * 7;
-    ctx.fillStyle = '#38bdf8';
-    ctx.beginPath();
-    ctx.arc(vx, vy, 4, 0, Math.PI * 2);
-    ctx.fill();
-
-    // Weapon barrel
-    const wx = Math.cos(player.angle) * 16;
-    const wy = Math.sin(player.angle) * 16;
-    ctx.strokeStyle = '#ffffff';
-    ctx.lineWidth = 3;
-    ctx.beginPath();
-    ctx.moveTo(vx, vy);
-    ctx.lineTo(wx, wy);
-    ctx.stroke();
-
-    // Companion Drone
-    if (player.modules.core?.hasCompanionDrone) {
-      const dx = Math.cos(player.droneAngle) * 36;
-      const dy = Math.sin(player.droneAngle) * 36;
-      ctx.fillStyle = '#38bdf8';
+      ctx.fillStyle = 'rgba(0, 240, 255, 0.2)';
       ctx.beginPath();
-      ctx.arc(dx, dy, 5, 0, Math.PI * 2);
+      ctx.arc(0, 0, player.radius + 5, 0, Math.PI * 2);
       ctx.fill();
     }
 
+    // Directional orientation according to weapon aim
+    ctx.rotate(player.angle);
+
+    // 1. Armored Walking Legs / Boots
+    const walkCycle = Math.sin((player.walkAnimTimer || 0) * 12) * 5;
+    ctx.fillStyle = '#09111e';
+    // Left Boot
+    ctx.fillRect(-10, -11 + walkCycle, 8, 5);
+    ctx.fillStyle = '#00f0ff';
+    ctx.fillRect(-10, -11 + walkCycle, 2, 5);
+    // Right Boot
+    ctx.fillStyle = '#09111e';
+    ctx.fillRect(-10, 6 - walkCycle, 8, 5);
+    ctx.fillStyle = '#00f0ff';
+    ctx.fillRect(-10, 6 - walkCycle, 2, 5);
+
+    // 2. Active Dorsal Symbiotic Tentacle Mutation
+    if (player.mutations?.symbioticTentacle) {
+      const tentWave = Math.sin((player.walkAnimTimer || 0) * 8) * 6;
+      ctx.strokeStyle = '#15803d';
+      ctx.lineWidth = 4;
+      ctx.beginPath();
+      ctx.moveTo(-player.radius + 2, 0);
+      ctx.quadraticCurveTo(-player.radius - 12, tentWave, -player.radius - 22, -tentWave * 1.4);
+      ctx.stroke();
+
+      // Sharp venomous chitin barb tip
+      ctx.fillStyle = '#ff0055';
+      ctx.beginPath();
+      ctx.arc(-player.radius - 22, -tentWave * 1.4, 3.5, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // 3. Player Exo-Suit Armored Torso
+    ctx.fillStyle = '#0f172a';
+    ctx.beginPath();
+    ctx.arc(0, 0, player.radius * 0.9, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = '#0284c7';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    // Heavy Pauldrons
+    ctx.fillStyle = '#1e293b';
+    ctx.fillRect(-8, -player.radius, 10, 5);
+    ctx.fillRect(-8, player.radius - 5, 10, 5);
+
+    // Glowing Chest Reactor / Oxygen Intake
+    ctx.fillStyle = '#00f0ff';
+    ctx.fillRect(-2, -3, 6, 6);
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, -1, 3, 3);
+
+    // 4. Helmet & Cyber Visor
+    ctx.fillStyle = '#09111e';
+    ctx.beginPath();
+    ctx.arc(2, 0, 7, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Sleek Curved Cyan Visor
+    ctx.fillStyle = '#00f0ff';
+    ctx.fillRect(5, -4, 4, 8);
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(7, -3, 2, 3);
+
+    // 5. Weapon Model Rendering
+    const weaponId = player.modules?.weapon?.id || 'weapon_blaster';
+    if (weaponId === 'weapon_shotgun') {
+      // Photon Scattergun (Double Heavy Barrel)
+      ctx.fillStyle = '#78350f';
+      ctx.fillRect(8, 2, 14, 6);
+      ctx.fillStyle = '#f59e0b';
+      ctx.fillRect(20, 3, 4, 4);
+    } else if (weaponId === 'weapon_railgun') {
+      // Linear Magnetic Railgun (Long dual coil rails)
+      ctx.fillStyle = '#1e1b4b';
+      ctx.fillRect(6, 2, 22, 5);
+      ctx.fillStyle = '#bf55ec';
+      ctx.fillRect(10, 1, 16, 2);
+      ctx.fillRect(10, 7, 16, 2);
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(26, 3, 4, 3);
+    } else if (weaponId === 'weapon_missile') {
+      // Micro-Missile Launcher
+      ctx.fillStyle = '#450a0a';
+      ctx.fillRect(6, 1, 16, 8);
+      ctx.fillStyle = '#ff2a5f';
+      ctx.fillRect(20, 2, 4, 6);
+    } else if (weaponId === 'weapon_tesla') {
+      // Arc Tesla Emitter
+      ctx.fillStyle = '#082f49';
+      ctx.fillRect(6, 2, 14, 6);
+      ctx.fillStyle = '#00f0ff';
+      ctx.fillRect(18, 0, 3, 4);
+      ctx.fillRect(18, 6, 3, 4);
+    } else {
+      // Standard Plasma Blaster
+      ctx.fillStyle = '#1e293b';
+      ctx.fillRect(8, 2, 12, 4);
+      ctx.fillStyle = '#00f0ff';
+      ctx.fillRect(18, 2, 3, 4);
+    }
+
     ctx.restore();
+
+    // Companion Drone (Orbits in World Coordinates)
+    if (player.modules?.core?.hasCompanionDrone) {
+      const droneDist = 38;
+      const dx = player.x + Math.cos(player.droneAngle || 0) * droneDist;
+      const dy = player.y + Math.sin(player.droneAngle || 0) * droneDist;
+
+      ctx.save();
+      ctx.translate(Math.round(dx), Math.round(dy));
+      ctx.fillStyle = '#0f172a';
+      ctx.beginPath();
+      ctx.arc(0, 0, 6, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = '#00f0ff';
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+
+      // Drone Sensor Eye
+      ctx.fillStyle = '#38bdf8';
+      ctx.fillRect(-2, -2, 4, 4);
+      ctx.restore();
+    }
   },
 
   drawPickup(ctx, p) {
@@ -635,29 +1237,50 @@ const PixelArt = {
     ctx.translate(Math.round(p.x), Math.round(p.y));
 
     if (p.type === 'scrap') {
+      // Scrap Resource (Hexagonal Golden Cog / Nanite Gear)
       ctx.fillStyle = '#f59e0b';
-      ctx.fillRect(-4, -4, 8, 8);
+      ctx.fillRect(-5, -5, 10, 10);
+      ctx.fillStyle = '#78350f';
+      ctx.fillRect(-2, -2, 4, 4);
       ctx.strokeStyle = '#ffffff';
       ctx.lineWidth = 1;
-      ctx.strokeRect(-4, -4, 8, 8);
+      ctx.strokeRect(-5, -5, 10, 10);
     } else if (p.type === 'hp') {
+      // Medical Vitality Cell (Crimson Red Cross Pack)
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(-6, -6, 12, 12);
       ctx.fillStyle = '#ff0055';
       ctx.fillRect(-5, -2, 10, 4);
       ctx.fillRect(-2, -5, 4, 10);
+      ctx.strokeStyle = '#881337';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(-6, -6, 12, 12);
     } else if (p.type === 'shield') {
+      // Shield Barrier Hex Cell
       ctx.fillStyle = '#00f0ff';
       ctx.beginPath();
-      ctx.arc(0, 0, 5, 0, Math.PI * 2);
+      ctx.arc(0, 0, 6, 0, Math.PI * 2);
       ctx.fill();
-    } else if (p.type === 'o2') {
-      ctx.fillStyle = '#38bdf8';
-      ctx.fillRect(-3, -5, 6, 10);
-    } else if (p.type === 'module_item') {
-      ctx.fillStyle = '#bf55ec';
-      ctx.fillRect(-6, -6, 12, 12);
       ctx.strokeStyle = '#ffffff';
       ctx.lineWidth = 1.5;
-      ctx.strokeRect(-6, -6, 12, 12);
+      ctx.stroke();
+    } else if (p.type === 'o2') {
+      // Oxygen Pressure Canister
+      ctx.fillStyle = '#0284c7';
+      ctx.fillRect(-4, -6, 8, 12);
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(-2, -8, 4, 3);
+      ctx.fillStyle = '#38bdf8';
+      ctx.fillRect(-3, -2, 6, 4);
+    } else if (p.type === 'module_item') {
+      // Cybernetic Module Component Cube
+      ctx.fillStyle = '#581c87';
+      ctx.fillRect(-7, -7, 14, 14);
+      ctx.strokeStyle = '#bf55ec';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(-7, -7, 14, 14);
+      ctx.fillStyle = '#00f0ff';
+      ctx.fillRect(-3, -3, 6, 6);
     }
 
     ctx.restore();
@@ -755,11 +1378,11 @@ class Game {
     if (btnAcceptMutation) {
       btnAcceptMutation.addEventListener('click', () => {
         if (this.pendingMutation) {
-          this.player.mutations[this.pendingMutation.id] = true;
+          this.player.addMutation(this.pendingMutation.id);
           this.player.stats.mutationsCount++;
           document.getElementById('mutagenModal').classList.add('hidden');
           this.state = 'PLAYING';
-          this.input.resetInputState();
+          this.input.clearMomentaryInputs();
         }
       });
     }
@@ -769,7 +1392,7 @@ class Game {
       btnRejectMutation.addEventListener('click', () => {
         document.getElementById('mutagenModal').classList.add('hidden');
         this.state = 'PLAYING';
-        this.input.resetInputState();
+        this.input.clearMomentaryInputs();
       });
     }
   }
@@ -821,6 +1444,9 @@ class Game {
   }
 
   addParticle(p) {
+    if (this.particles.length >= 120) {
+      this.particles.shift();
+    }
     this.particles.push(p);
   }
 
@@ -868,7 +1494,8 @@ class Game {
 
     this.player.vx = 0;
     this.player.vy = 0;
-    this.input.resetInputState();
+    // Clear momentary clicks/taps but PRESERVE held movement keys
+    this.input.clearMomentaryInputs();
 
     if (window.soundEngine) window.soundEngine.playDoorOpen();
   }
@@ -887,7 +1514,7 @@ class Game {
       this.player.y = this.targetPlayerPos.y;
       this.player.vx = 0;
       this.player.vy = 0;
-      this.input.resetInputState();
+      this.input.clearMomentaryInputs();
 
       if (!this.dungeon.currentRoom.cleared) {
         this.dungeon.currentRoom.spawnEnemies();
@@ -896,7 +1523,10 @@ class Game {
         }
       }
 
-      if (this.prevRoom) this.prevRoom.projectiles = [];
+      if (this.prevRoom) {
+        this.prevRoom.projectiles = [];
+        this.prevRoom.hazards = [];
+      }
       this.prevRoom = null;
       this.nextRoom = null;
 
@@ -1171,7 +1801,7 @@ class Game {
       modal.classList.remove('hidden');
     } else if (this.state === 'LOADOUT') {
       this.state = 'PLAYING';
-      this.input.resetInputState();
+      this.input.clearMomentaryInputs();
       modal.classList.add('hidden');
     }
   }
@@ -1244,7 +1874,7 @@ class Game {
       modal.classList.remove('hidden');
     } else if (this.state === 'PAUSED') {
       this.state = 'PLAYING';
-      this.input.resetInputState();
+      this.input.clearMomentaryInputs();
       modal.classList.add('hidden');
     }
   }
@@ -1366,14 +1996,24 @@ class Game {
       if (this.shakeDuration <= 0) this.shakeIntensity = 0;
     }
 
+    // Continuous Validation & State Safety Guards
+    this.validateGameState();
+    this.validatePlayer();
+
     const room = this.dungeon?.currentRoom;
     if (!room) return;
+
+    this.validateRoom(room);
+    this.validateEntities(room);
 
     // 1. Update Player
     this.player.update(dt, room, this.input);
 
-    // 2. Update Projectiles
+    // 2. Update Projectiles (with safety cap against endless accumulation)
     if (room.projectiles) {
+      if (room.projectiles.length > 90) {
+        room.projectiles = room.projectiles.slice(-90);
+      }
       for (let proj of room.projectiles) {
         proj.update(dt, room);
       }
@@ -1581,25 +2221,28 @@ class Game {
     });
   }
 
-  // --- AUTOMATED STATE VALIDATIONS ---
+  // --- AUTOMATED STATE VALIDATIONS & CRASH PREVENTION ---
   validateGameState() {
-    if (!this.player) return { valid: false, reason: 'Player missing' };
-    if (!this.dungeon || !this.dungeon.currentRoom) return { valid: false, reason: 'Current room missing' };
+    if (!this.player) {
+      this.player = new Player(this.width / 2, this.height / 2, this);
+    }
     const validStates = ['MENU', 'PLAYING', 'TRANSITION', 'PAUSED', 'LOADOUT', 'MUTAGEN_SELECT', 'GAME_OVER', 'VICTORY'];
-    if (!validStates.includes(this.state)) return { valid: false, reason: `Invalid state: ${this.state}` };
+    if (!validStates.includes(this.state)) {
+      this.state = 'PLAYING';
+    }
     return { valid: true };
   }
 
   validatePlayer() {
     if (!this.player) return false;
-    if (isNaN(this.player.x) || isNaN(this.player.y)) {
-      this.player.x = this.width / 2;
-      this.player.y = this.height / 2;
-      this.player.vx = 0;
-      this.player.vy = 0;
-    }
-    this.player.hp = Math.max(0, Math.min(this.player.maxHp, this.player.hp));
-    this.player.shield = Math.max(0, Math.min(this.player.maxShield, this.player.shield));
+    if (isNaN(this.player.x) || !isFinite(this.player.x)) this.player.x = this.width / 2;
+    if (isNaN(this.player.y) || !isFinite(this.player.y)) this.player.y = this.height / 2;
+    if (isNaN(this.player.vx) || !isFinite(this.player.vx)) this.player.vx = 0;
+    if (isNaN(this.player.vy) || !isFinite(this.player.vy)) this.player.vy = 0;
+    if (isNaN(this.player.hp) || !isFinite(this.player.hp)) this.player.hp = this.player.maxHp || 6;
+    if (isNaN(this.player.shield) || !isFinite(this.player.shield)) this.player.shield = this.player.maxShield || 2;
+    this.player.hp = Math.max(0, Math.min(this.player.maxHp || 6, this.player.hp));
+    this.player.shield = Math.max(0, Math.min(this.player.maxShield || 2, this.player.shield));
     return true;
   }
 
@@ -1610,18 +2253,18 @@ class Game {
     if (!Array.isArray(room.obstacles)) room.obstacles = [];
     if (!Array.isArray(room.pickups)) room.pickups = [];
     if (!Array.isArray(room.hazards)) room.hazards = [];
+    if (!Array.isArray(room.decorations)) room.decorations = [];
     return true;
   }
 
   validateEntities(room) {
     if (!room || !room.enemies) return;
     room.enemies.forEach(e => {
-      if (isNaN(e.x) || isNaN(e.y)) {
-        e.x = this.width / 2;
-        e.y = this.height / 2;
-        e.vx = 0;
-        e.vy = 0;
-      }
+      if (isNaN(e.x) || !isFinite(e.x)) e.x = this.width / 2;
+      if (isNaN(e.y) || !isFinite(e.y)) e.y = this.height / 2;
+      if (isNaN(e.vx) || !isFinite(e.vx)) e.vx = 0;
+      if (isNaN(e.vy) || !isFinite(e.vy)) e.vy = 0;
+      if (isNaN(e.hp) || !isFinite(e.hp)) e.hp = e.maxHp || 10;
     });
   }
 }

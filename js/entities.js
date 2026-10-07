@@ -95,17 +95,66 @@ class Entity {
   }
 
   resolveObstacle(obs) {
+    if (!obs) return;
+    const safetyMargin = 1.5;
+
+    // Detect if entity center is inside the obstacle bounding box
+    const insideX = this.x >= obs.x && this.x <= obs.x + obs.w;
+    const insideY = this.y >= obs.y && this.y <= obs.y + obs.h;
+
+    if (insideX && insideY) {
+      // Entity center is trapped inside the obstacle!
+      // Push the entity out towards the closest edge with a safe margin
+      const distLeft = this.x - obs.x;
+      const distRight = (obs.x + obs.w) - this.x;
+      const distTop = this.y - obs.y;
+      const distBottom = (obs.y + obs.h) - this.y;
+
+      const minDist = Math.min(distLeft, distRight, distTop, distBottom);
+
+      if (minDist === distLeft) {
+        this.x = obs.x - this.radius - safetyMargin;
+        if (this.vx > 0) this.vx = 0;
+      } else if (minDist === distRight) {
+        this.x = obs.x + obs.w + this.radius + safetyMargin;
+        if (this.vx < 0) this.vx = 0;
+      } else if (minDist === distTop) {
+        this.y = obs.y - this.radius - safetyMargin;
+        if (this.vy > 0) this.vy = 0;
+      } else {
+        this.y = obs.y + obs.h + this.radius + safetyMargin;
+        if (this.vy < 0) this.vy = 0;
+      }
+      return;
+    }
+
+    // Entity center is outside: standard circle-AABB separation
     const closestX = Math.max(obs.x, Math.min(this.x, obs.x + obs.w));
     const closestY = Math.max(obs.y, Math.min(this.y, obs.y + obs.h));
     const distX = this.x - closestX;
     const distY = this.y - closestY;
     const distSq = distX * distX + distY * distY;
 
-    if (distSq < this.radius * this.radius && distSq > 0.001) {
+    if (distSq < this.radius * this.radius) {
       const dist = Math.sqrt(distSq);
-      const overlap = this.radius - dist;
-      this.x += (distX / dist) * overlap;
-      this.y += (distY / dist) * overlap;
+      if (dist > 0.0001) {
+        const overlap = this.radius - dist + safetyMargin;
+        const nx = distX / dist;
+        const ny = distY / dist;
+        this.x += nx * overlap;
+        this.y += ny * overlap;
+
+        // Dampen velocity pointing directly into the obstacle
+        const dot = this.vx * nx + this.vy * ny;
+        if (dot < 0) {
+          this.vx -= dot * nx;
+          this.vy -= dot * ny;
+        }
+      } else {
+        // Fallback: nudge out towards nearest edge
+        this.x += (Math.random() - 0.5) * 4;
+        this.y += (Math.random() - 0.5) * 4;
+      }
     }
   }
 }
@@ -128,11 +177,12 @@ class Projectile {
     this.maxLife = this.life;
     this.dead = false;
     this.pierce = false;
-    this.piercesLeft = 2;
+    this.piercesLeft = 3;
     this.homing = false;
     this.chainTargets = 0;
     this.leavesAcid = false;
     this.owner = null;
+    this.hitTargets = new Set(); // Prevent damaging the same target multiple times
   }
 
   update(dt, room) {
@@ -161,19 +211,21 @@ class Projectile {
 
       if (target) {
         const targetAngle = Math.atan2(target.y - this.y, target.x - this.x);
-        const currentSpeed = Math.hypot(this.vx, this.vy);
+        const currentSpeed = Math.hypot(this.vx, this.vy) || 380;
         this.vx += Math.cos(targetAngle) * 900 * dt;
         this.vy += Math.sin(targetAngle) * 900 * dt;
         const newSpeed = Math.hypot(this.vx, this.vy);
-        this.vx = (this.vx / newSpeed) * currentSpeed;
-        this.vy = (this.vy / newSpeed) * currentSpeed;
+        if (newSpeed > 0) {
+          this.vx = (this.vx / newSpeed) * currentSpeed;
+          this.vy = (this.vy / newSpeed) * currentSpeed;
+        }
       }
     }
 
     this.x += this.vx * dt;
     this.y += this.vy * dt;
 
-    // Wall Collision
+    // Room Wall Collision
     const T = CONSTANTS.WALL_THICKNESS;
     const W = CONSTANTS.ROOM_WIDTH;
     const H = CONSTANTS.ROOM_HEIGHT;
@@ -182,8 +234,8 @@ class Projectile {
       this.dead = true;
       if (this.leavesAcid && room) {
         room.hazards.push({
-          x: this.x - 14,
-          y: this.y - 14,
+          x: Math.max(T + 10, Math.min(W - T - 30, this.x - 14)),
+          y: Math.max(T + 10, Math.min(H - T - 30, this.y - 14)),
           w: 28,
           h: 28,
           type: 'acid_pool',
@@ -196,7 +248,7 @@ class Projectile {
     // Obstacle Collision
     if (room && room.obstacles) {
       for (let obs of room.obstacles) {
-        if (obs.type === 'pillar') {
+        if (obs.type === 'pillar' || obs.type === 'terminal' || obs.type === 'pedestal' || obs.type === 'mutagen_pod' || obs.type.startsWith('shop_')) {
           if (this.x >= obs.x && this.x <= obs.x + obs.w &&
               this.y >= obs.y && this.y <= obs.y + obs.h) {
             this.dead = true;
@@ -213,16 +265,26 @@ class Projectile {
     for (let target of targets) {
       if (target.dead || !window.areHostile(this, target)) continue;
 
+      // Ignore target if already struck by this projectile
+      if (this.hitTargets.has(target)) continue;
+
       const dist = Math.hypot(this.x - target.x, this.y - target.y);
       if (dist < this.radius + target.radius) {
         const hit = target.takeDamage(this.damage, this.owner);
         if (hit) {
+          this.hitTargets.add(target);
+
           if (this.type === 'missile') {
             if (window.soundEngine) window.soundEngine.playExplosion();
             if (window.gameInstance) {
               window.gameInstance.addParticle(new Shockwave(this.x, this.y, 75, '#ffaa00'));
               window.gameInstance.screenShake(4, 0.15);
             }
+          }
+
+          // Tesla Chain Lightning Propagation
+          if (this.chainTargets > 0 || this.type === 'lightning') {
+            this.triggerChainLightning(target, room);
           }
 
           if (this.leavesAcid && room) {
@@ -236,14 +298,63 @@ class Projectile {
             });
           }
 
-          if (this.pierce && this.piercesLeft > 0) {
+          // Piercing Projectiles (Railgun, etc.)
+          if (this.pierce && this.piercesLeft > 1) {
             this.piercesLeft--;
+            // Continues traveling through new targets
           } else {
             this.dead = true;
             break;
           }
         }
       }
+    }
+  }
+
+  triggerChainLightning(primaryTarget, room) {
+    if (!room || !primaryTarget) return;
+    const maxChains = this.chainTargets > 0 ? this.chainTargets : 3;
+    const chained = new Set([primaryTarget]);
+    let currentSource = primaryTarget;
+    const chainRange = 220;
+    const chainDmg = Math.max(2, Math.round(this.damage * 0.75));
+
+    for (let c = 0; c < maxChains; c++) {
+      let nextTarget = null;
+      let minDist = chainRange;
+
+      const candidates = [...(room.enemies || [])];
+      if (window.gameInstance?.player) candidates.push(window.gameInstance.player);
+
+      for (let cand of candidates) {
+        if (cand.dead || chained.has(cand) || !window.areHostile(this, cand)) continue;
+        const d = Math.hypot(cand.x - currentSource.x, cand.y - currentSource.y);
+        if (d < minDist) {
+          minDist = d;
+          nextTarget = cand;
+        }
+      }
+
+      if (!nextTarget) break;
+
+      // Apply damage to chained target
+      nextTarget.takeDamage(chainDmg, this.owner);
+      chained.add(nextTarget);
+
+      // Render lightning arc connection
+      if (window.gameInstance) {
+        window.gameInstance.addParticle(new LightningArc(
+          currentSource.x, currentSource.y,
+          nextTarget.x, nextTarget.y,
+          '#00f0ff', 0.22
+        ));
+      }
+
+      currentSource = nextTarget;
+    }
+
+    if (chained.size > 1 && window.soundEngine) {
+      window.soundEngine.playShoot('lightning');
     }
   }
 }
@@ -366,6 +477,58 @@ class FloatingText {
     ctx.shadowColor = '#000000';
     ctx.shadowBlur = 4;
     ctx.fillText(this.text, Math.round(this.x), Math.round(this.y));
+    ctx.restore();
+  }
+}
+
+class LightningArc {
+  constructor(x1, y1, x2, y2, color = '#00f0ff', duration = 0.22) {
+    this.x1 = x1;
+    this.y1 = y1;
+    this.x2 = x2;
+    this.y2 = y2;
+    this.color = color;
+    this.life = duration;
+    this.maxLife = duration;
+    this.dead = false;
+
+    // Precalculate jittered segment points once for speed
+    this.points = [];
+    const segments = 6;
+    const perpAngle = Math.atan2(y2 - y1, x2 - x1) + Math.PI / 2;
+    for (let i = 0; i <= segments; i++) {
+      const t = i / segments;
+      const bx = x1 + (x2 - x1) * t;
+      const by = y1 + (y2 - y1) * t;
+      const jitter = (i === 0 || i === segments) ? 0 : (Math.random() - 0.5) * 18;
+      this.points.push({
+        x: bx + Math.cos(perpAngle) * jitter,
+        y: by + Math.sin(perpAngle) * jitter
+      });
+    }
+  }
+
+  update(dt) {
+    this.life -= dt;
+    if (this.life <= 0) {
+      this.dead = true;
+    }
+  }
+
+  render(ctx) {
+    const alpha = Math.max(0, this.life / this.maxLife);
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.strokeStyle = this.color;
+    ctx.lineWidth = 2.5;
+    ctx.shadowColor = this.color;
+    ctx.shadowBlur = 6;
+    ctx.beginPath();
+    this.points.forEach((pt, i) => {
+      if (i === 0) ctx.moveTo(pt.x, pt.y);
+      else ctx.lineTo(pt.x, pt.y);
+    });
+    ctx.stroke();
     ctx.restore();
   }
 }
@@ -1081,6 +1244,31 @@ class Player extends Entity {
       damageDealt: 0,
       startTime: Date.now()
     };
+
+    // Base Hitbox & Mutation Sizing
+    this.baseRadius = 16;
+    this.radius = 16;
+    this.updateHitbox();
+  }
+
+  updateHitbox() {
+    // symbioticTentacle drawback: increases player collision area / hitbox by ~15%
+    const mult = this.mutations.symbioticTentacle ? 1.15 : 1.0;
+    this.radius = Math.round(this.baseRadius * mult * 10) / 10;
+  }
+
+  addMutation(mutationId) {
+    if (this.mutations && this.mutations.hasOwnProperty(mutationId)) {
+      this.mutations[mutationId] = true;
+      this.updateHitbox();
+    }
+  }
+
+  removeMutation(mutationId) {
+    if (this.mutations && this.mutations.hasOwnProperty(mutationId)) {
+      this.mutations[mutationId] = false;
+      this.updateHitbox();
+    }
   }
 
   equipModule(module) {
@@ -1505,6 +1693,26 @@ class Player extends Entity {
   }
 }
 
+// Safe Room Position Validator
+function isPositionSafe(room, x, y, radius = 16) {
+  const T = CONSTANTS.WALL_THICKNESS + 8;
+  const W = CONSTANTS.ROOM_WIDTH;
+  const H = CONSTANTS.ROOM_HEIGHT;
+  if (x - radius < T || x + radius > W - T || y - radius < T || y + radius > H - T) {
+    return false;
+  }
+  if (room && room.obstacles) {
+    for (let obs of room.obstacles) {
+      const margin = radius + 4;
+      if (x >= obs.x - margin && x <= obs.x + obs.w + margin &&
+          y >= obs.y - margin && y <= obs.y + obs.h + margin) {
+        return false;
+      }
+    }
+  }
+  return true;
+}
+
 // Window Exports
 window.Entity = Entity;
 window.Projectile = Projectile;
@@ -1512,6 +1720,7 @@ window.Particle = Particle;
 window.FireParticle = FireParticle;
 window.Shockwave = Shockwave;
 window.FloatingText = FloatingText;
+window.LightningArc = LightningArc;
 window.Enemy = Enemy;
 window.BioSwarmer = BioSwarmer;
 window.BioSpitter = BioSpitter;
@@ -1525,3 +1734,4 @@ window.BossTitan = BossTitan;
 window.BossEntropia = BossEntropia;
 window.BossArchon = BossArchon;
 window.Player = Player;
+window.isPositionSafe = isPositionSafe;
