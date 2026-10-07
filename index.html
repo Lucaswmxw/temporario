@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>TecnoBound - Roguelike de Ação Sci-Fi</title>
+  <meta name="description" content="TecnoBound: Roguelike de ação espacial top-down em pixel art com combate entre facções, hackeamento de autômatos, mutações alienígenas e progressão por setores.">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+  <div id="gameWrapper">
+    <!-- CRT Scanline & Grain overlay -->
+    <div id="crtOverlay"></div>
+
+    <!-- Game Canvas -->
+    <canvas id="gameCanvas"></canvas>
+
+    <!-- Retro Pixel HUD Overlay -->
+    <div id="hudOverlay" class="hidden">
+      <!-- Top Bar -->
+      <div class="hud-top">
+        <div class="hud-left">
+          <!-- HP & Shield Badges (Zero Emojis, Pure SVG/CSS Status Pips) -->
+          <div class="pixel-badge">
+            <span style="font-size: 10px; color: #ff0055; margin-right: 4px;">VIT</span>
+            <span id="hpDisplay"></span>
+            <span style="font-size: 10px; color: #00f0ff; margin-left: 8px; margin-right: 4px;">ESC</span>
+            <span id="shieldDisplay"></span>
+          </div>
+
+          <!-- Oxygen Gauge -->
+          <div class="pixel-badge o2-badge" id="o2Widget">
+            <span style="color: #38bdf8;">O2</span>
+            <div class="pixel-bar-bg">
+              <div id="o2BarFill" class="pixel-bar-fill fill-o2" style="width: 100%;"></div>
+            </div>
+            <span id="o2Value" style="color: #38bdf8;">100%</span>
+          </div>
+
+          <!-- EMP Hacking Gauge -->
+          <div class="pixel-badge" id="hackWidget">
+            <span style="color: var(--border-purple);">EMP [E]</span>
+            <div class="pixel-bar-bg">
+              <div id="hackBarFill" class="pixel-bar-fill fill-hack" style="width: 100%;"></div>
+            </div>
+            <span id="hackStatus" style="font-size: 9px; color: var(--border-purple);">PRONTO</span>
+          </div>
+        </div>
+
+        <div class="hud-center">
+          <div class="game-logo-badge">TECNOBOUND</div>
+          <div id="sectorBanner">SETOR 01: BIOMASSA ALIENÍGENA</div>
+        </div>
+
+        <div class="hud-right">
+          <div class="hud-buttons">
+            <button class="hud-btn" id="btnOpenLoadout">LOADOUT [TAB]</button>
+            <button class="hud-btn" id="btnToggleAudio">BGM: ON</button>
+            <button class="hud-btn" id="btnToggleSfx">SFX: ON</button>
+            <button class="hud-btn" id="btnPauseGame">PAUSA [P]</button>
+          </div>
+
+          <!-- Minimap -->
+          <div id="minimapContainer">
+            <canvas id="minimapCanvas" width="130" height="130"></canvas>
+          </div>
+        </div>
+      </div>
+
+      <!-- Bottom Bar -->
+      <div class="hud-bottom">
+        <div class="weapon-card">
+          <span style="color: var(--border-amber);">SUCATA: <strong id="scrapValue">20</strong></span>
+        </div>
+        <div class="weapon-card">
+          <span>ARMA ATIVA: <strong id="activeWeaponName" style="color: var(--border-cyan);">Blaster de Plasma Padrão</strong></span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Mobile Virtual Touch Controls -->
+    <div id="mobileControls">
+      <div id="joystickZone" class="touch-interactive">
+        <div id="joystickKnob"></div>
+      </div>
+      <div id="touchActionZone" class="touch-interactive">
+        <div class="touch-btn-column">
+          <button class="touch-btn util-btn" id="btnTouchInteract">LOAD</button>
+          <button class="touch-btn util-btn" id="btnTouchPause">PAUS</button>
+        </div>
+        <button class="touch-btn dash-btn" id="btnTouchDash">DASH<br><span style="font-size:9px;">[ESQ]</span></button>
+        <button class="touch-btn hack-btn" id="btnTouchHack">HACK<br><span style="font-size:9px;">[EMP]</span></button>
+        <button class="touch-btn fire-btn" id="btnTouchFire">FOGO<br><span style="font-size:9px;">[AUTO]</span></button>
+      </div>
+    </div>
+
+    <!-- Start / Title Screen Modal -->
+    <div id="startScreen" class="game-modal">
+      <div class="modal-content">
+        <h1>TECNOBOUND</h1>
+        <div class="modal-subtitle">ROGUELIKE DE AÇÃO TOP-DOWN ESPACIAL</div>
+
+        <div class="lore-panel">
+          Você desperta nos destroços de uma estação orbital alienígena abandonada. Defesas autônomas e uma infestação biológica guerreiam pelo controle das ruínas:
+          <ul>
+            <li><strong>Conflito de Facções:</strong> Aliens e robôs enfrentam-se em combate aberto. Use o fogo cruzado a seu favor.</li>
+            <li><strong>Hackeamento EMP [E / Touch]:</strong> Neutralize robôs e transforme-os temporariamente em aliados táticos.</li>
+            <li><strong>Módulos Cibernéticos:</strong> Colete e instale componentes para customizar armas, chassi, motores e núcleos.</li>
+            <li><strong>Mutações Alienígenas:</strong> Absorva simbiontes bio-orgânicos que concedem poderes acompanhados de sequelas.</li>
+            <li><strong>Monitoramento de O2:</strong> Nos setores de vácuo profundo, controle seu oxigênio para evitar asfixia crítica.</li>
+          </ul>
+          Seu objetivo: navegar pelos 4 setores da estação, expurgar os guardiões, alcançar o <strong>Núcleo da Nave</strong> e aniquilar o <strong>Archon</strong> para concluir a missão com vida.
+        </div>
+
+        <div class="controls-panel">
+          <div><strong>WASD / Analógico:</strong> Movimento</div>
+          <div><strong>Mouse / Touch:</strong> Mirar e Atirar</div>
+          <div><strong>Espaço / Shift:</strong> Dash com I-Frames</div>
+          <div><strong>E / Botão Direito:</strong> Feixe de Hack EMP</div>
+          <div><strong>TAB / I:</strong> Gerenciador de Loadout</div>
+          <div><strong>ESC / P:</strong> Pausa do Jogo</div>
+        </div>
+
+        <button class="retro-btn" id="btnStartGame">INICIAR EXPEDIÇÃO</button>
+      </div>
+    </div>
+
+    <!-- Loadout / Inventory Modal -->
+    <div id="loadoutModal" class="game-modal hidden">
+      <div class="modal-content">
+        <h1>TECNOBOUND // LOADOUT MODULAR</h1>
+        <div class="modal-subtitle">Equipe módulos cibernéticos e inspecione mutações ativas</div>
+
+        <div class="slots-container" id="equippedSlots"></div>
+
+        <h3 style="font-size: 11px; color: var(--border-cyan); margin: 12px 0 6px 0; text-align: left;">MÓDULOS NO INVENTÁRIO</h3>
+        <div id="inventoryModules" style="max-height: 110px; overflow-y: auto;"></div>
+
+        <h3 style="font-size: 11px; color: var(--border-green); margin: 12px 0 6px 0; text-align: left;">MUTAÇÕES ALIENÍGENAS ATIVAS</h3>
+        <div id="activeMutationsList" style="max-height: 110px; overflow-y: auto;"></div>
+
+        <div style="margin-top: 16px;">
+          <button class="retro-btn" id="btnCloseLoadout">RETORNAR AO COMBATE</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Alien Mutagen Modal -->
+    <div id="mutagenModal" class="game-modal hidden">
+      <div class="modal-content">
+        <h1 style="color: var(--border-green);">TECNOBOUND // CÂMARA MUTAGÊNICA</h1>
+        <div class="modal-subtitle">Uma simbiose alienígena viva oferece aprimoramento biológico.</div>
+
+        <div class="mutation-badge-card" style="padding: 16px; margin: 16px 0;">
+          <h2 id="mutagenTitle" style="color: #fff; font-size: 16px; margin-bottom: 8px;"></h2>
+          <div class="boon"><strong>Vantagem:</strong> <span id="mutagenBoon"></span></div>
+          <div class="drawback" style="margin-top: 6px;"><strong>Sequela:</strong> <span id="mutagenDrawback"></span></div>
+        </div>
+
+        <div style="display: flex; justify-content: center; gap: 12px;">
+          <button class="retro-btn retro-btn-success" id="btnAcceptMutation">ACEITAR SIMBIOSE</button>
+          <button class="retro-btn retro-btn-danger" id="btnRejectMutation">PURGAR E IGNORAR</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Pause Modal -->
+    <div id="pauseModal" class="game-modal hidden">
+      <div class="modal-content">
+        <h1>TECNOBOUND // PAUSA</h1>
+        <div class="modal-subtitle">Sistemas e diagnósticos congelados</div>
+        <div style="display: flex; justify-content: center; gap: 12px; margin-top: 20px;">
+          <button class="retro-btn" id="btnResume">CONTINUAR</button>
+          <button class="retro-btn retro-btn-danger" id="btnRestartFromPause">REINICIAR RUN</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Game Over Screen -->
+    <div id="gameOverModal" class="game-modal hidden">
+      <div class="modal-content">
+        <h1 style="color: var(--border-danger);">TECNOBOUND // SINAIS VITAIS PERDIDOS</h1>
+        <div class="modal-subtitle">Seu exoesqueleto sucumbiu aos perigos da estação à deriva.</div>
+        <div id="gameOverStats" class="lore-panel"></div>
+        <button class="retro-btn retro-btn-danger" id="btnRestart">REINICIAR EXPEDIÇÃO</button>
+      </div>
+    </div>
+
+    <!-- Victory Screen -->
+    <div id="victoryModal" class="game-modal hidden">
+      <div class="modal-content">
+        <h1 style="color: var(--border-cyan);">TECNOBOUND // MISSÃO CONCLUÍDA</h1>
+        <div class="victory-badge">
+          NÚCLEO PURGADO // ARCHON DESTRUÍDO<br>
+          A ESTAÇÃO CAIU EM SILÊNCIO
+        </div>
+        <div class="modal-subtitle">Você neutralizou a ameaça alienígena e libertou o complexo da infestação.</div>
+        <div id="victoryStats" class="lore-panel"></div>
+        <button class="retro-btn" id="btnRestartWin">NOVA RUN</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modular Scripts Loaded in Strict Dependency Order -->
+  <script src="js/constants.js"></script>
+  <script src="js/audio.js"></script>
+  <script src="js/entities.js"></script>
+  <script src="js/dungeon.js"></script>
+  <script src="js/game.js"></script>
+</body>
+</html>
